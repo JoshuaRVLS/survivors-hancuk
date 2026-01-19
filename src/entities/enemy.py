@@ -101,6 +101,13 @@ class Enemy(Entity):
     def update(self, dt):
         # Optimasi Jarak
         dist_sq = (self.player.pos - self.pos).length_squared()
+        
+        # Despawn jika terlalu jauh (misal 5000px) untuk jaga performa
+        # 5000^2 = 25,000,000
+        if dist_sq > 25000000:
+            self.kill()
+            return
+
         if dist_sq > 9000000: # 3000px
             self.apply_knockback(dt) # Tetap proses fisika jika didorong
             return

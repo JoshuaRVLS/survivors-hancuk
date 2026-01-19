@@ -433,6 +433,10 @@ class GameScene(Scene):
             
         if not is_host: return # Client diam saja
         
+        # Hard Cap Jumlah Musuh (Cegah lag)
+        if len(self.enemy_sprites) >= 300:
+            return
+        
         # Hitung Waktu Bertahan
         elapsed_sec = (current_time - self.survival_start_time) // 1000
         minutes = elapsed_sec // 60

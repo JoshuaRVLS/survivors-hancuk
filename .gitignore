@@ -141,3 +141,4 @@ Thumbs.db
 # Game specific (just in case)
 *.sav
 screenshots/
+assets/

@@ -4,18 +4,19 @@ import os
 import random
 from ..settings import *
 from ..utils import load_sprite_sheet
-from ..utils import load_sprite_sheet
+from ..core.collision import SAT
 from ..vfx import DeathEffect, HitSpark
 from ..items import ExperienceGem
+from .interactables import HealthPotion
 from .entity import Entity
 
 class Enemy(Entity):
     def __init__(self, pos, groups, player, obstacle_sprites, enemy_type='orc', difficulty=1.0, uid=None):
+        self.enemy_type = enemy_type # Set this BEFORE super().__init__ so _load_custom_hitbox works
         super().__init__(pos, groups)
         self.player = player
         self.uid = uid # ID Network
         self.obstacle_sprites = obstacle_sprites
-        self.enemy_type = enemy_type
         self.data = ENEMY_DATA.get(enemy_type, ENEMY_DATA['orc'])
         
         # Statistik
@@ -35,7 +36,7 @@ class Enemy(Entity):
         
         # Hitbox
         self.hitbox = self.rect.copy()
-        if self.enemy_type == 'orc':
+        if self.enemy_type.startswith('orc'):
             # Hitbox khusus Orc - pas di kaki
             self.hitbox.height = 20
             self.hitbox.width = self.rect.width * 0.4
@@ -58,6 +59,10 @@ class Enemy(Entity):
         self.last_pos = pygame.math.Vector2(self.pos)
         self.stuck_timer = 0
         self.stuck_boost = pygame.math.Vector2()
+        
+        # Visual States
+        self.is_flashing = False
+        self.flash_time = 0
 
     def import_assets(self):
         base_path = self.data['asset_path']
@@ -65,7 +70,7 @@ class Enemy(Entity):
         self.animations = {'idle': [], 'walk': [], 'attack': [], 'hurt': [], 'death': []}
         
         # Menggunakan pola nama file
-        if self.enemy_type == 'orc':
+        if self.enemy_type.startswith('orc'):
             self.animations['idle'] = load_sprite_sheet(os.path.join(base_path, "Orc-Idle.png"), 100, 100, scale=scale, trim=True)
             self.animations['walk'] = load_sprite_sheet(os.path.join(base_path, "Orc-Walk.png"), 100, 100, scale=scale, trim=True)
             self.animations['attack'] = load_sprite_sheet(os.path.join(base_path, "Orc-Attack01.png"), 100, 100, scale=scale, trim=True)
@@ -123,6 +128,11 @@ class Enemy(Entity):
                     DeathEffect(self.rect.center, visual_groups)
                     for _ in range(3): ExperienceGem(self.rect.center, visual_groups, self.player)
                     for _ in range(3): ExperienceGem(self.rect.center, visual_groups, self.player)
+                    
+                    # Drop Health Potion (10% chance)
+                    if random.random() < 0.10:
+                        HealthPotion(self.rect.center, visual_groups, self.player)
+                    
                     self.dropped_items = True
                     
                     # Beri tahu Network (Jika Host)
@@ -149,12 +159,16 @@ class Enemy(Entity):
         # Terapkan knockback selalu
         self.apply_knockback(dt)
             
-        # Efek Berkedip saat Kena Damage
-        if self.is_hurting:
+        # Efek Berkedip saat Kena Damage (Hurt atau Flash dari Aura)
+        if self.is_hurting or self.is_flashing:
             if (pygame.time.get_ticks() // 50) % 2 == 0:
                 # Blink (buat transparan)
                 self.image = self.image.copy()
                 self.image.set_alpha(0)
+            
+            # Reset flash state after 150ms
+            if self.is_flashing and pygame.time.get_ticks() - self.flash_time > 150:
+                self.is_flashing = False
 
     def ai_logic(self, dt):
         # Kunci Prioritas: Jika menyerang, jangan update gerakan
@@ -281,39 +295,37 @@ class Enemy(Entity):
         separation = pygame.math.Vector2()
         if not self.groups(): return separation
         
-        # Optimasi: Akses grup musuh spesifik jika mungkin
-        # Gunakan self.game untuk akses semua musuh
         neighbors = []
         if self.game and hasattr(self.game.active_scene, 'enemy_sprites'):
-             neighbors = self.game.active_scene.enemy_sprites
+             # Limit neighbor checks for performance and stability
+             all_neighbors = self.game.active_scene.enemy_sprites.sprites()
+             neighbors = random.sample(all_neighbors, min(len(all_neighbors), 16))
         else:
              return separation
              
         count = 0
-        separation_radius = 60 # Px
+        separation_radius = 50 
         
         my_center = self.hitbox.center
         my_vec = pygame.math.Vector2(my_center)
         
-        # Cek jarak naif untuk sekarang
         for enemy in neighbors:
-            if enemy is self: continue
-            
-            # Lewati non-entity
-            if not hasattr(enemy, 'hitbox'): continue
-
-            # Cek rect cepat dulu
+            if enemy is self or not hasattr(enemy, 'hitbox'): continue
+    
             if abs(enemy.rect.centerx - self.rect.centerx) > separation_radius: continue
             if abs(enemy.rect.centery - self.rect.centery) > separation_radius: continue
             
             other_vec = pygame.math.Vector2(enemy.hitbox.center)
             dist = my_vec.distance_to(other_vec)
             
-            if dist < separation_radius and dist > 0:
-                # Dorong menjauh
+            if dist < separation_radius:
                 diff = my_vec - other_vec
-                diff = diff.normalize() / dist # Bobot berdasarkan jarak (makin dekat makin kuat)
-                separation += diff
+                if diff.magnitude() == 0:
+                    diff = pygame.math.Vector2(random.uniform(-1, 1), random.uniform(-1, 1))
+                
+                # Soft-force: strength decreases linearly with distance
+                strength = (separation_radius - dist) / separation_radius
+                separation += diff.normalize() * strength
                 count += 1
                 
         if count > 0:
@@ -344,13 +356,22 @@ class Enemy(Entity):
             hitboxes = [self.player.attack_hitbox]
             
         hit = False
+        my_points = self.get_world_hitbox_points()
         for hb in hitboxes:
-            if self.hitbox.colliderect(hb):
+            if SAT.collides(my_points, hb):
                 hit = True
                 break
         
         if hit and not self.is_hurting:
-            self.health -= self.player.damage
+            # Deal damage
+            damage_dealt = self.player.damage
+            self.health -= damage_dealt
+            
+            # Lifesteal logic
+            if hasattr(self.player, 'lifesteal') and self.player.lifesteal > 0:
+                hp_gain = damage_dealt * self.player.lifesteal
+                self.player.health = min(self.player.max_health, self.player.health + hp_gain)
+
             # Visual Groups saja
             visual_groups = [g for g in self.groups() if hasattr(g, 'custom_draw')]
             if not visual_groups and self.groups(): visual_groups = [self.groups()[0]]
@@ -358,7 +379,8 @@ class Enemy(Entity):
             
             kb_direction = pygame.math.Vector2(self.rect.center) - pygame.math.Vector2(self.player.rect.center)
             if kb_direction.magnitude() > 0:
-                self.knockback_vector = kb_direction.normalize() * 10
+                kb_strength = self.player.weapon_data.get('knockback', 10)
+                self.knockback_vector = kb_direction.normalize() * kb_strength
             
             # Efek Hit Stop
             if self.game:

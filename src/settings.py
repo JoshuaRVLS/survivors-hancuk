@@ -81,11 +81,22 @@ ENEMY_DATA = {
         'health': 3,
         'speed': 2.5,
         'damage': 10,
-        'asset_path': "assets/Characters/Orc/Orc",
+        'asset_path': "assets/Characters/Orc/Orc with shadows",
         'exp_drop': 30,
         'chase_range': 2500,
         'attack_range': 80,
         'scale': 2.0
+    },
+    'orc_captain': {
+        'name': 'Orc Captain',
+        'health': 60,  # 20x the health of a regular orc (3 * 20)
+        'speed': 1.8, # Slower but heavier
+        'damage': 25, # More punch
+        'asset_path': "assets/Characters/Orc/Orc with shadows",
+        'exp_drop': 500, # Big reward
+        'chase_range': 3000,
+        'attack_range': 120,
+        'scale': 4.5 # Massive size
     }
 }
 
@@ -98,14 +109,16 @@ WEAPON_DATA = {
         'range': 110,
         'width': 200,
         'slash_color': (255, 255, 255),
-        'projectile_count': 1
+        'projectile_count': 1,
+        'knockback': 12
     },
     'aura': {
         'name': 'Holy Aura',
         'damage': 10,
         'cooldown': 200, # Tick rate (Cepat agar terasa responsif)
-        'range': 150,
-        'color': (255, 215, 0, 100) # Emas
+        'range': 80,
+        'color': (255, 215, 0, 100), # Emas
+        'knockback': 2
     },
     'fireball': {
         'name': 'Fireball',
@@ -113,7 +126,8 @@ WEAPON_DATA = {
         'cooldown': 1200,
         'range': 350, # Jarak deteksi
         'speed': 7,
-        'projectile_count': 1
+        'projectile_count': 1,
+        'knockback': 20
     }
 }
 

@@ -2,6 +2,9 @@
 import pygame
 from ..settings import *
 from ..utils import load_sprite_sheet
+from ..core.collision import SAT
+import json
+import os
 
 class Entity(pygame.sprite.Sprite):
     def __init__(self, pos, groups, z_layer=1):
@@ -22,6 +25,10 @@ class Entity(pygame.sprite.Sprite):
         self.hurt_time = 0
         self.hitbox_offset_y = 0 # Offset for 2.5D alignment
         
+        # Custom Hitbox Data (Vertex Points)
+        self.custom_hitbox = None 
+        self._load_custom_hitbox()
+        
     def _sync_hitbox_with_pos(self):
         self.hitbox.centerx = self.pos.x + self.rect.width/2
         self.hitbox.centery = self.pos.y + (self.rect.height / 2 + self.hitbox_offset_y)
@@ -30,6 +37,45 @@ class Entity(pygame.sprite.Sprite):
         self.pos.x = self.hitbox.centerx - self.rect.width/2
         self.pos.y = self.hitbox.centery - (self.rect.height / 2 + self.hitbox_offset_y)
         
+    def _load_custom_hitbox(self):
+        # Cari data berdasarkan nama class atau config
+        entity_id = getattr(self, 'enemy_type', None) or getattr(self, 'char_config', {}).get('name', '').lower()
+        if not entity_id: return
+        
+        path = "assets/data/collisions.json"
+        if os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    data = json.load(f)
+                    
+                    # Match exact or prefix (e.g., orc_captain matches orc)
+                    found_key = None
+                    if entity_id in data:
+                        found_key = entity_id
+                    else:
+                        # Try prefix matching for variants
+                        for key in data.keys():
+                            if entity_id.startswith(key):
+                                found_key = key
+                                break
+                    
+                    if found_key:
+                        self.custom_hitbox = data[found_key]["points"]
+                        self.hitbox_ref_size = data[found_key].get("ref_size")
+            except:
+                pass
+
+    def get_world_hitbox_points(self):
+        if not self.custom_hitbox:
+            # Fallback to rect points
+            return [self.hitbox.topleft, self.hitbox.topright, self.hitbox.bottomright, self.hitbox.bottomleft]
+        
+        # Scale logic
+        scale_x = self.rect.width / self.hitbox_ref_size[0] if self.hitbox_ref_size else 1.0
+        scale_y = self.rect.height / self.hitbox_ref_size[1] if self.hitbox_ref_size else 1.0
+        
+        # Konversi poin relatif editor ke koordinat dunia (berdasarkan rect)
+        return [(p[0] * scale_x + self.rect.x, p[1] * scale_y + self.rect.y) for p in self.custom_hitbox]
     def animate(self, dt):
         # Handle status logic in subclasses
         animation_speed = ANIMATION_SPEED if not self.status.startswith('attack') else ATTACK_ANIMATION_SPEED

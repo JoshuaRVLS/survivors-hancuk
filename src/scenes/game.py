@@ -84,9 +84,9 @@ class GameScene(Scene):
         from ..ui.minimap import Minimap
         self.minimap = Minimap(self.manager, self.player)
 
-        # Interactables
+        # Interactables (Removed per User Request)
         self.interactable_sprites = pygame.sprite.Group()
-        self.spawn_initial_chests()
+        # self.spawn_initial_chests()
         
     def spawn_initial_chests(self):
         from ..entities.interactables import Chest
@@ -204,21 +204,36 @@ class GameScene(Scene):
                     elif event.key == pygame.K_2 and len(self.upgrade_options) > 1: self.apply_upgrade(self.upgrade_options[1])
                     elif event.key == pygame.K_3 and len(self.upgrade_options) > 2: self.apply_upgrade(self.upgrade_options[2])
 
-            if event.type == pygame.MOUSEBUTTONDOWN and self.level_up_active:
+            if event.type == pygame.MOUSEBUTTONDOWN and self.paused:
                 mouse_pos = pygame.mouse.get_pos()
-                # Check collision with cards
-                sw, sh = self.manager.resolution
-                card_w, card_h = 250, 350
-                gap = 40
-                total_w = 3 * card_w + 2 * gap
-                start_x = (sw - total_w) // 2
-                cls_y = (sh - card_h) // 2
                 
-                for i, opt in enumerate(self.upgrade_options):
-                    rect = pygame.Rect(start_x + i*(card_w+gap), cls_y, card_w, card_h)
-                    if rect.collidepoint(mouse_pos):
-                        self.apply_upgrade(opt)
-                        break
+                if self.level_up_active:
+                    # Check collision with cards
+                    sw, sh = self.manager.resolution
+                    card_w, card_h = 250, 350
+                    gap = 40
+                    total_w = 3 * card_w + 2 * gap
+                    start_x = (sw - total_w) // 2
+                    cls_y = (sh - card_h) // 2
+                    
+                    for i, opt in enumerate(self.upgrade_options):
+                        rect = pygame.Rect(start_x + i*(card_w+gap), cls_y, card_w, card_h)
+                        if rect.collidepoint(mouse_pos):
+                            self.apply_upgrade(opt)
+                            break
+                else:
+                    # Pause Menu Clicks
+                    sw, sh = self.manager.resolution
+                    font_o = pygame.font.SysFont('arial', 32)
+                    start_y = 300
+                    for i, option in enumerate(self.menu_options):
+                        # Use a reasonable fixed width for the click area
+                        rect = pygame.Rect(0, 0, 400, 50)
+                        rect.center = (sw // 2, start_y + i * 60)
+                        if rect.collidepoint(mouse_pos):
+                            self.menu_index = i
+                            self.select_menu_option()
+                            break
 
     def trigger_level_up(self):
         self.paused = True
@@ -409,8 +424,12 @@ class GameScene(Scene):
             spawn_x = self.player.pos.x + math.cos(angle) * distance
             spawn_y = self.player.pos.y + math.sin(angle) * distance
         
-        # For now, we still spawn 'orc', but the class is generic!
-        enemy_type = 'orc' 
+        # Determine enemy type
+        enemy_type = 'orc'
+        captain_chance = 0.02 * self.difficulty_multiplier # Start at 2%, grows with difficulty
+        if random.random() < min(captain_chance, 0.4): # Cap at 40%
+            enemy_type = 'orc_captain'
+        
         uid = str(uuid.uuid4())
         
         # Spawn Locally
@@ -591,12 +610,27 @@ class GameScene(Scene):
         fps = int(self.manager.clock.get_fps())
         sprites_total = len(self.camera_group)
         sprites_visible = len([s for s in self.camera_group.sprites() if self.camera_group.virtual_surface.get_rect().colliderect(s.rect.move(-self.camera_group.offset.x, -self.camera_group.offset.y))])
+
+        # Entity Breakdown
+        enemies = len(self.enemy_sprites)
+        remotes = len(self.remote_players)
+        vfx = sprites_total - enemies - remotes - 1 # -1 for player
+        
+        # Mouse World Pos
+        mouse_pos = pygame.math.Vector2(pygame.mouse.get_pos())
+        # Convert screen to world: screen_pos + camera_offset
+        # Note: mouse_pos is relative to actual window, we need to map to virtual surface if scaled
+        # But here manager.resolution and virtual_surface usually match or are handled by main.py
+        world_mouse = mouse_pos + self.camera_group.offset
+        cx, cy = self.chunk_manager.get_chunk_coord(self.player.pos)
         
         info_lines = [
-            f"FPS: {fps}",
+            f"FPS: {fps} | DT: {self.manager.clock.get_time()}ms",
             f"Entities: {sprites_total} (Vis: ~{sprites_visible})",
+            f"  - Enemies: {enemies} | Remote: {remotes} | VFX: {vfx}",
             f"Player Pos: ({int(self.player.pos.x)}, {int(self.player.pos.y)})",
-            f"State: {self.player.status}",
+            f"Chunk: {cx}, {cy} | Queue: {len(self.chunk_manager.load_queue)}",
+            f"Difficulty: {self.difficulty_multiplier:.2f} | Mouse: ({int(world_mouse.x)}, {int(world_mouse.y)})",
             f"Hit Stop: {self.manager.is_hit_stopped}"
         ]
         
@@ -678,28 +712,9 @@ class GameScene(Scene):
             pygame.draw.rect(surf, color, rect, border_radius=15)
             pygame.draw.rect(surf, border, rect, 3, border_radius=15)
             
-            # Ikon
-            icon_path = opt.get('icon_path', '')
-            icon_key = icon_path or opt['name']
-            
-            if icon_key not in self.upgrade_icons:
-                # Load dan Cache
-                try:
-                    img = pygame.image.load(icon_path).convert_alpha()
-                    img = pygame.transform.scale(img, (100, 100))
-                    self.upgrade_icons[icon_key] = img
-                except:
-                    # Fallback (Kotak berwarna berdasarkan hash nama)
-                    s = pygame.Surface((100, 100))
-                    hashed_color = (hash(opt['name']) % 255, hash(opt['description']) % 255, 150)
-                    s.fill(hashed_color)
-                    self.upgrade_icons[icon_key] = s
-            
-            surf.blit(self.upgrade_icons[icon_key], (x+75, cls_y+30))
-            
-            # Text
+            # Text (NAMA)
             name_surf = font_name.render(opt['name'], True, (255, 255, 255))
-            surf.blit(name_surf, name_surf.get_rect(center=(x+card_w//2, cls_y + 160)))
+            surf.blit(name_surf, name_surf.get_rect(center=(x+card_w//2, cls_y + 60)))
             
             # Wrapping Text untuk Deskripsi
             words = opt['description'].split(' ')
@@ -713,7 +728,7 @@ class GameScene(Scene):
                     curr_line = word
             lines.append(curr_line)
             
-            desc_y = cls_y + 200
+            desc_y = cls_y + 110
             for line in lines:
                 line_surf = font_desc.render(line, True, (200, 200, 200)) # Removed kwarg
                 surf.blit(line_surf, line_surf.get_rect(center=(x+card_w//2, desc_y)))
@@ -739,9 +754,19 @@ class GameScene(Scene):
         # 3. Opsi
         font_o = pygame.font.SysFont('arial', 32)
         start_y = 300
+        mouse_pos = pygame.mouse.get_pos()
+        sw = surf.get_width()
+        
         for i, option in enumerate(self.menu_options):
+            # Area Deteksi Hover (Tetap di tengah)
+            detect_rect = pygame.Rect(0, 0, 400, 50)
+            detect_rect.center = (sw // 2, start_y + i * 60)
+            
+            if detect_rect.collidepoint(mouse_pos):
+                self.menu_index = i
+                
             color = (100, 255, 218) if i == self.menu_index else (255, 255, 255)
             text = f"> {option} <" if i == self.menu_index else option
             opt_surf = font_o.render(text, True, color)
-            rect = opt_surf.get_rect(center=(surf.get_width()//2, start_y + i * 60))
+            rect = opt_surf.get_rect(center=(sw//2, start_y + i * 60))
             surf.blit(opt_surf, rect)

@@ -42,3 +42,17 @@ def load_sprite_sheet(path, frame_width, frame_height, scale=1, trim=False):
     _SPRITE_CACHE[cache_key] = frames
     
     return frames
+
+def debug_log(*args, **kwargs):
+    """Prints to console only if game.debug_mode is global and enabled."""
+    import __main__
+    game = getattr(__main__, 'game', None)
+    if game and getattr(game, 'debug_mode', False):
+        print("[DEBUG]", *args, **kwargs)
+
+def get_cache_info():
+    """Returns stats about the sprite cache."""
+    return {
+        "entries": len(_SPRITE_CACHE),
+        "keys": list(_SPRITE_CACHE.keys())
+    }

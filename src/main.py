@@ -2,6 +2,7 @@ import pygame
 import sys
 from .settings import *
 from .shaders import ShaderPipeline
+from .utils import debug_log
 from .scenes.menu import MenuScene
 from .scenes.char_select import CharacterSelectionScene
 from .scenes.game import GameScene
@@ -54,9 +55,12 @@ class GameManager:
             self.shaders.resize(self.resolution)
         else:
             self.shaders = ShaderPipeline(self.resolution)
+            
+        debug_log(f"Display Settings Applied: {self.resolution}, Fullscreen: {self.fullscreen}")
 
     def switch_scene(self, scene_key):
         if scene_key in self.scenes:
+            debug_log(f"Switching Scene: {getattr(self.active_scene, '__class__', {}).__name__} -> {scene_key}")
             self.active_scene = self.scenes[scene_key]
             self.active_scene.on_enter()
             self.clock.tick(FPS) 

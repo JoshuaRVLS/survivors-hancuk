@@ -122,5 +122,21 @@ UPGRADE_DATA = {
         'op': 'add',
         'icon_path': 'assets/Upgrades/fireball_multishot.png',
         'req_weapon': 'fireball' 
+    },
+    'knockback_up': {
+        'name': 'Force',
+        'description': 'Increases weapon knockback by 30%.',
+        'target': 'weapon',
+        'stat': 'knockback',
+        'value': 1.3,
+        'op': 'mult'
+    },
+    'lifesteal_up': {
+        'name': 'Vampirism',
+        'description': 'Gains 5% Lifesteal.',
+        'target': 'player',
+        'stat': 'lifesteal',
+        'value': 0.05,
+        'op': 'add'
     }
 }

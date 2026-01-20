@@ -79,6 +79,7 @@ class Player(Entity):
         self.level = 1
         self.exp = 0
         self.exp_required = 100
+        self.lifesteal = 0.0 # Percentage of damage returned as health
 
     def import_assets(self):
         base_path = self.char_config['asset_path']
@@ -388,9 +389,6 @@ class Player(Entity):
         if self.aura_sprite is None:
              # Spawn visual
              groups = [self.groups()[0]] # Camera Group
-             # Jika light group ada, tambahkan
-             if self.game:
-                  groups.append(self.game.active_scene.light_sprites)
              self.aura_sprite = AuraSprite(groups, self, data['range'], data.get('color', (255, 215, 0, 50)))
         else:
              self.aura_sprite.set_radius(data['range'])

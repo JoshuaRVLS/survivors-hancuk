@@ -21,6 +21,7 @@ class ChunkManager:
         
         # Loaded chunks: {(cx, cy): [sprite1, sprite2, ...]}
         self.active_chunks = {}
+        self.load_queue = [] # Queue of chunk coords to load
         
         # Load Tilesets (Auto-scaled to TILE_SIZE)
         self.grass_tiles = self._load_tiles("assets/tiles/grass.png")
@@ -63,10 +64,19 @@ class ChunkManager:
             if coord not in target_chunks:
                 self.unload_chunk(coord)
         
-        # Load new chunks
+        # Add chunks to queue if not loaded and not already in queue
         for coord in target_chunks:
-            if coord not in self.active_chunks:
-                self.load_chunk(coord)
+            if coord not in self.active_chunks and coord not in self.load_queue:
+                self.load_queue.append(coord)
+        
+        # Sort queue by distance to player to prioritize nearest chunks
+        if self.load_queue:
+            self.load_queue.sort(key=lambda c: (c[0] - p_cx)**2 + (c[1] - p_cy)**2)
+            
+        # Process one chunk per frame to avoid stutter
+        if self.load_queue:
+            next_coord = self.load_queue.pop(0)
+            self.load_chunk(next_coord)
 
     def load_chunk(self, coord):
         cx, cy = coord
@@ -80,7 +90,9 @@ class ChunkManager:
             for tx in range(self.chunk_size):
                 gx = cx * self.chunk_size + tx
                 gy = cy * self.chunk_size + ty
-                rng = random.Random(f"tile_{gx}_{gy}")
+                # Optimized Integer RNG: (gx * 397) ^ (gy * 101) + chunk_seed
+                tile_seed = (gx * 397) ^ (gy * 101)
+                rng = random.Random(tile_seed)
                 
                 # Render logic (Draw directly to baked_surface)
                 base_image = rng.choice(self.grass_tiles)
@@ -99,7 +111,8 @@ class ChunkManager:
                 # Flower Clustering
                 elif not decor_image:
                     cluster_scale = 6
-                    patch_rng = random.Random(f"patch_{gx//cluster_scale}_{gy//cluster_scale}")
+                    patch_seed = ((gx//cluster_scale) * 733) ^ ((gy//cluster_scale) * 199)
+                    patch_rng = random.Random(patch_seed)
                     if patch_rng.random() < 0.12 and self.flower_tiles:
                         if rng.random() < 0.35:
                             decor_image = rng.choice(self.flower_tiles)
@@ -126,11 +139,13 @@ class ChunkManager:
                 
                 # BIOME LOGIC: Check macro region for forest density
                 biome_scale = 32 # Macro-scale biomes
-                biome_rng = random.Random(f"biome_{gx//biome_scale}_{gy//biome_scale}")
+                biome_seed = ((gx//biome_scale) * 104729) ^ ((gy//biome_scale) * 7919)
+                biome_rng = random.Random(biome_seed)
                 is_forest = biome_rng.random() < 0.35 
                 
                 # Local RNG for the specific tile/entity slot
-                rng = random.Random(f"ent_{gx}_{gy}") 
+                ent_seed = (gx * 571) ^ (gy * 317)
+                rng = random.Random(ent_seed) 
                 rand_val = rng.random()
                 
                 # Jitter for organic placement (+/- 15px)
@@ -148,21 +163,21 @@ class ChunkManager:
                 world_x = gx * self.tile_size + jitter_x
                 world_y = gy * self.tile_size + jitter_y
                 
-                # 1. Trees
-                if rand_val < tree_target:
-                    from .entities.tree import Tree
-                    v_rand = rng.random()
-                    if v_rand < 0.4: variant = 'big'
-                    elif v_rand < 0.7: variant = 'medium'
-                    else: variant = 'small'
-                    
-                    sprites.append(Tree((world_x, world_y), [self.camera_group], self.obstacles_group, variant=variant))
+                # 1. Trees (Removed per User Request)
+                # if rand_val < tree_target:
+                #     from .entities.tree import Tree
+                #     v_rand = rng.random()
+                #     if v_rand < 0.4: variant = 'big'
+                #     elif v_rand < 0.7: variant = 'medium'
+                #     else: variant = 'small'
+                #     
+                #     sprites.append(Tree((world_x, world_y), [self.camera_group], self.obstacles_group, variant=variant))
                 
-                # 2. Big Rock (Obstacle)
-                elif rand_val < rock_target: 
-                    from .entities.rock import Rock
-                    rock = Rock((world_x, world_y), [self.camera_group], self.obstacles_group)
-                    sprites.append(rock)       
+                # 2. Big Rock (Obstacle) (Removed per User Request)
+                # if rand_val < rock_target: 
+                #     from .entities.rock import Rock
+                #     rock = Rock((world_x, world_y), [self.camera_group], self.obstacles_group)
+                #     sprites.append(rock)       
         self.active_chunks[coord] = sprites
 
     def unload_chunk(self, coord):
